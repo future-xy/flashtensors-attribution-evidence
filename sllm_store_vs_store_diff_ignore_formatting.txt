@@ -1,0 +1,1053 @@
+--- ServerlessLLM/sllm_store/csrc/sllm_store/binary_utils.cpp	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/binary_utils.cpp	2025-11-11 10:30:03.764604624 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "binary_utils.h"
+ 
+ #include <iomanip>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/binary_utils.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/binary_utils.h	2025-11-11 10:30:03.764604624 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <cstddef>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/checkpoint_store.cpp	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/checkpoint_store.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "checkpoint_store.h"
+ 
+ #include <fcntl.h>
+@@ -32,19 +15,21 @@
+ CheckpointStore::CheckpointStore(const std::string& storage_path,
+                                  size_t memory_pool_size, int num_thread,
+                                  size_t chunk_size)
+-    : storage_path_(storage_path),
+-      memory_pool_size_(memory_pool_size),
+-      num_thread_(num_thread),
+-      chunk_size_(chunk_size) {
+-  // Get number of GPUs
+-  cudaGetDeviceCount(&num_gpus_);
++    : storage_path_(storage_path), memory_pool_size_(memory_pool_size),
++      num_thread_(num_thread), chunk_size_(chunk_size)
++{
++  cudaError_t err = cudaGetDeviceCount(&num_gpus_);
++  if (err != cudaSuccess || num_gpus_ < 1)
++  {
++    LOG(FATAL) << "Failed to detect CUDA GPUs: " << cudaGetErrorString(err);
++  }
+   LOG(INFO) << "Number of GPUs: " << num_gpus_;
+-
+   LOG(INFO) << "I/O threads: " << num_thread
+             << ", chunk size: " << chunk_size / MB << "MB";
+   LOG(INFO) << "Storage path: " << storage_path_;
+ 
+-  for (size_t i = 0; i < num_gpus_; ++i) {
++  for (size_t i = 0; i < num_gpus_; ++i)
++  {
+     cudaSetDevice(i);
+ 
+     cudaDeviceProp props;
+@@ -72,7 +57,8 @@
+ 
+     // create stream
+     cudaError_t err = cudaStreamCreate(&gpu_info_map_[i].stream_);
+-    if (err != cudaSuccess) {
++    if (err != cudaSuccess)
++    {
+       LOG(FATAL) << "cudaStreamCreate error: " << cudaGetErrorString(err);
+     }
+   }
+@@ -85,9 +71,11 @@
+ 
+ CheckpointStore::~CheckpointStore() { ClearMem(); }
+ 
+-int64_t CheckpointStore::RegisterModelInfo(const std::string& model_path) {
++int64_t CheckpointStore::RegisterModelInfo(const std::string &model_path)
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  if (model_map_.find(model_path) != model_map_.end()) {
++  if (model_map_.find(model_path) != model_map_.end())
++  {
+     // LOG(WARNING) << "Model " << model_path << " is already regfistered";
+     auto model = model_map_.at(model_path);
+     return model->GetModelSize();
+@@ -96,7 +84,8 @@
+   auto model = std::make_shared<Model>(model_path);
+ 
+   int ret = model->Initialize(storage_path_);
+-  if (ret != 0) {
++  if (ret != 0)
++  {
+     LOG(ERROR) << "Failed to initialize model " << model_path;
+     return ret;
+   }
+@@ -108,10 +97,12 @@
+   return model->GetModelSize();
+ }
+ 
+-int CheckpointStore::LoadModelFromDisk(const std::string& model_path) {
++int CheckpointStore::LoadModelFromDisk(const std::string &model_path)
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+   auto model = GetModelPtr(model_path);
+-  if (model == nullptr) {
++  if (model == nullptr)
++  {
+     LOG(ERROR) << "Model " << model_path << " is not registered";
+     return -1;
+   }
+@@ -120,37 +111,46 @@
+   // Allocate memory
+   lock_info.lock();
+   int remaining_size = model->AllocatePinnedMemory(memory_pool_);
+-  if (remaining_size < 0) {
++  if (remaining_size < 0)
++  {
+     LOG(ERROR) << "Failed to allocate memory for model " << model_path;
+     return -1;
+-  } else if (remaining_size > 0) {
++  }
++  else if (remaining_size > 0)
++  {
+     int mem_chunks_needed = remaining_size;
+     std::vector<std::pair<std::string,
+                           std::chrono::time_point<std::chrono::system_clock>>>
+         model_last_access_time(model_last_access_time_.begin(),
+                                model_last_access_time_.end());
+     std::sort(model_last_access_time.begin(), model_last_access_time.end(),
+-              [](const auto& a, const auto& b) { return a.second < b.second; });
+-    for (const auto& [model_path, last_access_time] : model_last_access_time) {
++              [](const auto &a, const auto &b)
++              { return a.second < b.second; });
++    for (const auto &[model_path, last_access_time] : model_last_access_time)
++    {
+       auto& model = model_map_[model_path];
+       int freed_chunks =
+           model->TryFreeHost();  // try to free memory, non-blocking
+       LOG(INFO) << "Free " << freed_chunks << " chunks, remaining "
+                 << mem_chunks_needed;
+-      if (freed_chunks > 0) {
++      if (freed_chunks > 0)
++      {
+         LOG(INFO) << "Model " << model_path << " is freed from memory";
+         mem_chunks_needed -= freed_chunks;
+-        if (mem_chunks_needed <= 0) {
++        if (mem_chunks_needed <= 0)
++        {
+           break;
+         }
+       }
+     }
+-    if (mem_chunks_needed > 0) {
++    if (mem_chunks_needed > 0)
++    {
+       LOG(ERROR) << "Failed to free enough memory for model " << model_path;
+       return -1;
+     }
+     ssize_t remaining_size = model->AllocatePinnedMemory(memory_pool_);
+-    if (remaining_size < 0) {
++    if (remaining_size < 0)
++    {
+       LOG(ERROR) << "Failed to allocate memory for model " << model_path;
+       return -1;
+     }
+@@ -160,9 +160,11 @@
+ 
+   int ret = model->ToHost(num_thread_);
+ 
+-  if (ret != 0) {
++  if (ret != 0)
++  {
+     LOG(ERROR) << "Failed to load model " << model_path << " to host";
+-    if (model->FreeHost() != 0) {
++    if (model->FreeHost() != 0)
++    {
+       LOG(ERROR) << "Failed to free memory for model " << model_path;
+     }
+     return ret;
+@@ -171,11 +173,11 @@
+   return ret;
+ }
+ 
+-int CheckpointStore::LoadModelFromDiskAsync(const std::string& model_path) {
++int CheckpointStore::LoadModelFromDiskAsync(const std::string &model_path)
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  async_tasks_.emplace(std::async(std::launch::async, [this, model_path]() {
+-    return LoadModelFromDisk(model_path);
+-  }));
++  async_tasks_.emplace(std::async(std::launch::async, [this, model_path]()
++                                  { return LoadModelFromDisk(model_path); }));
+ 
+   return 0;
+ }
+@@ -183,15 +185,21 @@
+ int CheckpointStore::LoadModelFromMem(
+     const std::string& model_path, const std::string& replica_uuid,
+     const MemCopyHandleListMap& gpu_memory_handles,
+-    const MemCopyChunkListMap& mem_copy_chunks) {
++    const MemCopyChunkListMap &mem_copy_chunks)
++{
+   // Sanity check
+-  if (model_path.empty() || replica_uuid.empty()) {
++  if (model_path.empty() || replica_uuid.empty())
++  {
+     LOG(ERROR) << "Model name or replica uuid is empty";
+     return -1;
+-  } else if (mem_copy_chunks.empty()) {
++  }
++  else if (mem_copy_chunks.empty())
++  {
+     LOG(ERROR) << "No memory copy chunk provided";
+     return -1;
+-  } else if (gpu_memory_handles.size() != mem_copy_chunks.size()) {
++  }
++  else if (gpu_memory_handles.size() != mem_copy_chunks.size())
++  {
+     LOG(ERROR) << "Mismatch between memory handles "
+                << gpu_memory_handles.size() << " and memory copy chunks "
+                << mem_copy_chunks.size();
+@@ -199,7 +207,8 @@
+   }
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+   auto model = GetModelPtr(model_path);
+-  if (model == nullptr) {
++  if (model == nullptr)
++  {
+     LOG(ERROR) << "Model " << model_path << " is not registered";
+     return -1;
+   }
+@@ -210,16 +219,20 @@
+ 
+   // Convert device uuid to device id
+   std::unordered_map<int, MemCopyChunkList> converted_mem_copy_chunks;
+-  for (auto& [device_id, gpu_info] : gpu_info_map_) {
+-    if (mem_copy_chunks.find(gpu_info.uuid_) == mem_copy_chunks.end()) {
++  for (auto &[device_id, gpu_info] : gpu_info_map_)
++  {
++    if (mem_copy_chunks.find(gpu_info.uuid_) == mem_copy_chunks.end())
++    {
+       continue;
+     }
+     converted_mem_copy_chunks[device_id] = mem_copy_chunks.at(gpu_info.uuid_);
+   }
+ 
+   std::unordered_map<int, MemCopyHandleList> converted_mem_copy_handles;
+-  for (auto& [device_id, gpu_info] : gpu_info_map_) {
+-    if (gpu_memory_handles.find(gpu_info.uuid_) == gpu_memory_handles.end()) {
++  for (auto &[device_id, gpu_info] : gpu_info_map_)
++  {
++    if (gpu_memory_handles.find(gpu_info.uuid_) == gpu_memory_handles.end())
++    {
+       continue;
+     }
+     converted_mem_copy_handles[device_id] =
+@@ -232,9 +245,11 @@
+                           converted_mem_copy_handles);
+ 
+   // TODO: check if the model is loaded successfully
+-  if (ret != 0) {
++  if (ret != 0)
++  {
+     LOG(ERROR) << "Failed to load model " << model_path << " to GPU";
+-    if (model->FreeGpu(replica_uuid) != 0) {
++    if (model->FreeGpu(replica_uuid) != 0)
++    {
+       LOG(ERROR) << "Failed to free memory for model " << model_path;
+     }
+   }
+@@ -244,26 +259,28 @@
+ 
+ int CheckpointStore::LoadModelFromMemAsync(
+     const std::string& model_path, const std::string& replica_uuid,
+-    const std::unordered_map<std::string, MemCopyHandleList>&
+-        gpu_memory_handles,
+-    const std::unordered_map<std::string, MemCopyChunkList>& mem_copy_chunks) {
++    const std::unordered_map<std::string, MemCopyHandleList>
++        &gpu_memory_handles,
++    const std::unordered_map<std::string, MemCopyChunkList> &mem_copy_chunks)
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  async_tasks_.emplace(std::async(
+-      std::launch::async,
+-      [this, model_path, replica_uuid, gpu_memory_handles, mem_copy_chunks]() {
+-        return LoadModelFromMem(model_path, replica_uuid, gpu_memory_handles,
+-                                mem_copy_chunks);
+-      }));
++  async_tasks_.emplace(
++      std::async(std::launch::async, [this, model_path, replica_uuid,
++                                      gpu_memory_handles, mem_copy_chunks]()
++                 { return LoadModelFromMem(model_path, replica_uuid, gpu_memory_handles,
++                                           mem_copy_chunks); }));
+ 
+   return 0;
+ }
+ 
+ int CheckpointStore::WaitModelInGpu(const std::string& model_path,
+-                                    const std::string& replica_uuid) {
++                                    const std::string &replica_uuid)
++{
+   // check if the model is in memory
+   std::shared_ptr<Model> model;
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  if (model_map_.find(model_path) == model_map_.end()) {
++  if (model_map_.find(model_path) == model_map_.end())
++  {
+     LOG(ERROR) << "Model " << model_path << " is not registered";
+     return 1;
+   }
+@@ -273,12 +290,15 @@
+   return model->WaitInGpu(replica_uuid);
+ }
+ 
+-int CheckpointStore::ClearMem() {
++int CheckpointStore::ClearMem()
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  for (auto& [model_path, model] : model_map_) {
++  for (auto &[model_path, model] : model_map_)
++  {
+     LOG(INFO) << "Unloading model " << model_path;
+     int ret = model->FreeHost();
+-    if (ret != 0) {
++    if (ret != 0)
++    {
+       LOG(ERROR) << "Failed to free memory for model " << model_path;
+     }
+   }
+@@ -287,9 +307,11 @@
+   return 0;
+ }
+ 
+-int CheckpointStore::UnloadModelFromHost(const std::string& model_path) {
++int CheckpointStore::UnloadModelFromHost(const std::string &model_path)
++{
+   std::unique_lock<std::mutex> lock_info(model_info_mutex_);
+-  if (model_map_.find(model_path) == model_map_.end()) {
++  if (model_map_.find(model_path) == model_map_.end())
++  {
+     LOG(ERROR) << "Model " << model_path << " is not registered";
+     return 1;
+   }
+@@ -299,8 +321,10 @@
+   return model->FreeHost();
+ }
+ 
+-ModelPtr CheckpointStore::GetModelPtr(const std::string& model_path) {
+-  if (model_map_.find(model_path) == model_map_.end()) {
++ModelPtr CheckpointStore::GetModelPtr(const std::string &model_path)
++{
++  if (model_map_.find(model_path) == model_map_.end())
++  {
+     LOG(ERROR) << "Model " << model_path << " is not registered";
+     return nullptr;
+   }
+@@ -308,15 +332,19 @@
+ }
+ 
+ MemPtrListMap CheckpointStore::GetDevicePtrsFromMemHandles(
+-    const MemCopyHandleListMap& memory_handles) {
++    const MemCopyHandleListMap &memory_handles)
++{
+   MemPtrListMap gpu_ptrs;
+-  for (const auto& [device_id, gpu_info] : gpu_info_map_) {
++  for (const auto &[device_id, gpu_info] : gpu_info_map_)
++  {
+     const std::string& uuid = gpu_info.uuid_;
+-    if (memory_handles.find(uuid) == memory_handles.end()) {
++    if (memory_handles.find(uuid) == memory_handles.end())
++    {
+       continue;
+     }
+     auto& handle_list = memory_handles.at(uuid);
+-    for (const auto& handle : handle_list) {
++    for (const auto &handle : handle_list)
++    {
+       // Convert handle string to cuda handle
+       cudaIpcMemHandle_t* cuda_handle =
+           reinterpret_cast<cudaIpcMemHandle_t*>(const_cast<char*>(
+@@ -326,7 +354,8 @@
+       cudaSetDevice(device_id);
+       cudaError_t err = cudaIpcOpenMemHandle(&ptr, *cuda_handle,
+                                              cudaIpcMemLazyEnablePeerAccess);
+-      if (err != cudaSuccess || ptr == nullptr) {
++      if (err != cudaSuccess || ptr == nullptr)
++      {
+         LOG(ERROR) << "Failed to open cuda handle on device " << device_id
+                    << " error: " << cudaGetErrorString(err);
+         exit(1);
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/checkpoint_store.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/checkpoint_store.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <condition_variable>
+@@ -102,6 +85,6 @@
+       const std::shared_ptr<GpuReplica>& gpu_replica,
+       std::vector<std::pair<int, uint64_t>> gpu_memory_sizes);
+   ModelPtr GetModelByName(const std::string& model_path);
+-  MemPtrListMap GetDevicePtrsFromMemHandles(
+-      const MemCopyHandleListMap& memory_handles);
++  MemPtrListMap
++  GetDevicePtrsFromMemHandles(const MemCopyHandleListMap &memory_handles);
+ };
+\ No newline at end of file
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/checkpoint_store_py.cpp	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/checkpoint_store_py.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include <pybind11/stl.h>
+ #include <pybind11/stl_bind.h>
+ #include <torch/extension.h>
+@@ -47,8 +30,8 @@
+           "load_model_from_mem_async",
+           [](CheckpointStore& cs, const std::string& model_path,
+              const std::string& replica_uuid,
+-             const std::unordered_map<std::string, std::vector<py::bytes>>&
+-                 gpu_memory_handles,
++             const std::unordered_map<std::string, std::vector<py::bytes>>
++                 &gpu_memory_handles,
+              const MemCopyChunkListMap& mem_copy_chunks) {
+             // Convert memory handles to MemCopyHandleListMap
+             MemCopyHandleListMap gpu_memory_handles_map;
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/concurrent_queue.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/concurrent_queue.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,28 +1,10 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <condition_variable>
+ #include <mutex>
+ #include <queue>
+ 
+-template <typename T>
+-class ConcurrentQueue {
++template <typename T> class ConcurrentQueue {
+  public:
+   ConcurrentQueue() = default;
+   ConcurrentQueue(const ConcurrentQueue&) = delete;
+@@ -38,8 +20,7 @@
+   std::condition_variable cond_;
+ };
+ 
+-template <typename T>
+-void ConcurrentQueue<T>::enqueue(T item) {
++template <typename T> void ConcurrentQueue<T>::enqueue(T item) {
+   std::unique_lock<std::mutex> lock(mtx_);
+   queue_.push(std::move(item));
+   lock.unlock();  // explicitly unlock before notifying to minimize the waiting
+@@ -47,8 +28,7 @@
+   cond_.notify_one();
+ }
+ 
+-template <typename T>
+-T ConcurrentQueue<T>::dequeue() {
++template <typename T> T ConcurrentQueue<T>::dequeue() {
+   std::unique_lock<std::mutex> lock(mtx_);
+   while (queue_.empty()) {
+     cond_.wait(lock);  // release lock and wait to be notified
+@@ -58,8 +38,7 @@
+   return item;
+ }
+ 
+-template <typename T>
+-bool ConcurrentQueue<T>::isEmpty() {
++template <typename T> bool ConcurrentQueue<T>::isEmpty() {
+   std::unique_lock<std::mutex> lock(mtx_);
+   return queue_.empty();
+ }
+\ No newline at end of file
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/concurrent_vector.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/concurrent_vector.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <condition_variable>
+@@ -23,8 +6,7 @@
+ #include <unordered_set>
+ #include <vector>
+ 
+-template <typename T>
+-class ConcurrentVector {
++template <typename T> class ConcurrentVector {
+  private:
+   std::vector<T> data;
+   std::mutex mtx_;
+@@ -54,20 +36,17 @@
+   size_ = 0;
+ }
+ 
+-template <typename T>
+-size_t ConcurrentVector<T>::capacity() {
++template <typename T> size_t ConcurrentVector<T>::capacity() {
+   std::lock_guard<std::mutex> lock(mtx_);
+   return capacity_;
+ }
+ 
+-template <typename T>
+-bool ConcurrentVector<T>::find(size_t key) {
++template <typename T> bool ConcurrentVector<T>::find(size_t key) {
+   std::lock_guard<std::mutex> lock(mtx_);
+   return keys_.find(key) != keys_.end();
+ }
+ 
+-template <typename T>
+-void ConcurrentVector<T>::enqueue(uint64_t key, T item) {
++template <typename T> void ConcurrentVector<T>::enqueue(uint64_t key, T item) {
+   std::lock_guard<std::mutex> lock(mtx_);
+ 
+   if (keys_.find(key) != keys_.end()) {
+@@ -81,8 +60,7 @@
+   cond_.notify_all();
+ }
+ 
+-template <typename T>
+-T ConcurrentVector<T>::dequeue(size_t pivot) {
++template <typename T> T ConcurrentVector<T>::dequeue(size_t pivot) {
+   std::unique_lock<std::mutex> lock(mtx_);
+   cond_.wait(lock, [this, pivot] { return pivot < size_; });
+   return data[pivot];
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/cuda_memory.cpp	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/cuda_memory.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "cuda_memory.h"
+ 
+ #include <glog/logging.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/cuda_memory.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/cuda_memory.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <cuda_runtime.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/cuda_memory_pool.cpp	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/cuda_memory_pool.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "cuda_memory_pool.h"
+ 
+ #include <glog/logging.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/cuda_memory_pool.h	2025-11-11 10:30:03.293596790 +0000
++++ flashtensors/csrc/store/cuda_memory_pool.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <cuda_runtime.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/error_handling.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/error_handling.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <cuda_runtime.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/gpu_replica.cpp	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/gpu_replica.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "gpu_replica.h"
+ 
+ #include <cuda_runtime.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/gpu_replica.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/gpu_replica.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,22 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+-#pragma once
+-
+ #include <condition_variable>
+ #include <future>
+ #include <unordered_map>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/memory_state.cpp	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/memory_state.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "memory_state.h"
+ 
+ #include <iostream>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/memory_state.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/memory_state.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ enum MemoryState : int {
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/model.cpp	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/model.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "model.h"
+ 
+ #include <fcntl.h>
+@@ -268,9 +251,9 @@
+   lock.unlock();
+ 
+   // Start a dispatcher first
+-  auto dispatch_future = std::async(
+-      std::launch::async,
+-      [this, gpu_replica, mem_copy_chunks, mem_copy_handles]() {
++  auto dispatch_future =
++      std::async(std::launch::async, [this, gpu_replica, mem_copy_chunks,
++                                      mem_copy_handles]() {
+         return DispatchToGpu(gpu_replica, mem_copy_chunks, mem_copy_handles);
+       });
+ 
+@@ -562,8 +545,8 @@
+   return 0;
+ }
+ 
+-std::vector<std::tuple<int, size_t, size_t>> Model::MapDataToChunks(
+-    size_t offset, size_t size, size_t chunk_size) {
++std::vector<std::tuple<int, size_t, size_t>>
++Model::MapDataToChunks(size_t offset, size_t size, size_t chunk_size) {
+   int start_chunk = offset / chunk_size;
+   size_t offset_in_start_chunk = offset % chunk_size;
+   size_t remaining_data = size;
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/model.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/model.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <fcntl.h>
+@@ -82,8 +65,8 @@
+ 
+   std::shared_ptr<BatchVector> host_ptr_vector_;
+ 
+-  std::vector<std::tuple<int, size_t, size_t>> MapDataToChunks(
+-      size_t offset, size_t size, size_t chunk_size);
++  std::vector<std::tuple<int, size_t, size_t>>
++  MapDataToChunks(size_t offset, size_t size, size_t chunk_size);
+   int DispatchToGpu(
+       const std::shared_ptr<GpuReplica>& gpu_replica,
+       const std::unordered_map<int, MemCopyChunkList>& mem_copy_chunks,
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/pinned_memory.cpp	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/pinned_memory.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "pinned_memory.h"
+ 
+ #include <glog/logging.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/pinned_memory.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/pinned_memory.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <memory>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/pinned_memory_pool.cpp	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/pinned_memory_pool.cpp	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #include "pinned_memory_pool.h"
+ 
+ #include <cuda_runtime.h>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/pinned_memory_pool.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/pinned_memory_pool.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <mutex>
+
+--- ServerlessLLM/sllm_store/csrc/sllm_store/types_and_defs.h	2025-11-11 10:30:03.294596807 +0000
++++ flashtensors/csrc/store/types_and_defs.h	2025-11-11 10:30:03.765604641 +0000
+@@ -1,20 +1,3 @@
+-// ----------------------------------------------------------------------------
+-//  ServerlessLLM
+-//  Copyright (c) ServerlessLLM Team 2024
+-//
+-//   Licensed under the Apache License, Version 2.0 (the "License");
+-//   you may not use this file except in compliance with the License.
+-//
+-//   You may obtain a copy of the License at
+-//
+-//                   http://www.apache.org/licenses/LICENSE-2.0
+-//
+-//   Unless required by applicable law or agreed to in writing, software
+-//   distributed under the License is distributed on an "AS IS" BASIS,
+-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-//   See the License for the specific language governing permissions and
+-//   limitations under the License.
+-//  ----------------------------------------------------------------------------
+ #pragma once
+ 
+ #include <iostream>
+
