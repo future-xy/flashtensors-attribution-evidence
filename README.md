@@ -8,13 +8,12 @@ This repository contains automated analysis and evidence regarding code attribut
 
 **Status:** Awaiting response (5-day timeline starts from issue opening date)
 
----
 
 ## Quick Summary
 
 Automated diff analysis shows that flashtensors' `csrc/` directory contains code derived from ServerlessLLM's `sllm_store/csrc/`, with Apache 2.0 license headers removed.
 
----
+
 
 ## Evidence Structure
 
@@ -54,7 +53,7 @@ flashtensors version has the header removed:
 
 **The rest of the code is identical.** This pattern repeats across all 31 C++ source files in `csrc/`.
 
----
+
 
 ## Methodology
 
@@ -70,7 +69,6 @@ All analysis was conducted using publicly available code:
 
 All scripts are provided for independent verification. Run `./clone_and_compare.sh` to reproduce the analysis.
 
----
 
 ## Timeline
 
@@ -79,7 +77,6 @@ All scripts are provided for independent verification. Run `./clone_and_compare.
 - **2025-11-11:** Evidence repository created with automated analysis
 - **2025-11-16:** Response deadline (5 days from issue opening)
 
----
 
 ## Our Position
 
@@ -90,7 +87,6 @@ We welcome reuse of ServerlessLLM under Apache 2.0. We only request:
 
 Open source thrives on proper attribution. We hope to resolve this cooperatively.
 
----
 
 ## Contact
 
